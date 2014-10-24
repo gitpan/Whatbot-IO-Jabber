@@ -6,7 +6,9 @@
 use MooseX::Declare;
 use Method::Signatures::Modifiers;
 
-our $VERSION = '0.2';
+BEGIN { 
+	$Whatbot::IO::Jabber::VERSION = '0.2';
+}
 
 class Whatbot::IO::Jabber extends Whatbot::IO {
 	use AnyEvent::XMPP::Client;
@@ -99,7 +101,7 @@ class Whatbot::IO::Jabber extends Whatbot::IO {
 			$config->{password},
 			$config->{host},
 			$config->{port},
-			{dont_retrieve_roster => 1}
+			{dont_retrieve_roster => 1, resource => 'bot'}
 		);
 
 		$handle->set_presence(undef, $config->{presence_status}, $config->{presence_priority});
@@ -140,7 +142,6 @@ class Whatbot::IO::Jabber extends Whatbot::IO {
 
 	# Send a message
 	method send_message ( $message ) {
-		$self->event_action( $self->me, $message->from, $message->content );
 		$message->{from} ||= $self->my_config->{jabber_id};
 		if ( my $account = $self->handle->find_account_for_dest_jid( $message->to ) ) {
 			if(my $room = $self->_muc->get_room( $account->connection, $message->to ) ) {
@@ -155,6 +156,7 @@ class Whatbot::IO::Jabber extends Whatbot::IO {
 				$m->send( $account->connection );
 			}
 		}
+		$self->event_message($message);
 	}
 
 	###########
@@ -163,12 +165,11 @@ class Whatbot::IO::Jabber extends Whatbot::IO {
 
 	# Event: Connected to server
 	method cb_client_session_ready ( $client, $acc ) {
-		$self->me( $acc->jid );
 		for my $room ( @{ $self->channels } ) {
 			$self->log->write( 'Joining ' . $room );
 			$self->_muc->join_room(
 				$acc->connection, join('@', $room, $self->my_config->{conference_server}),
-				node_jid( $acc->jid ),
+				( $self->my_config->{'nick'} or node_jid( $acc->jid ) ),
 				history          => { chars => 0 },
 				nickcollision_cb => sub {
 					my $tried = shift;
@@ -220,7 +221,7 @@ class Whatbot::IO::Jabber extends Whatbot::IO {
 					from    => res_jid($msg->from),
 					to      => $msg->room->jid,
 					content => $msg->any_body,
-					me => $msg->room->get_me->nick,
+					me => $me,
 				}
 			)
 		);
@@ -266,7 +267,7 @@ Whatbot::IO::Jabber - Provide Jabber/XMPP connections to Whatbot.
 			"conference_server": "conference.example.jabber.org",
 			"jabber_id": "user@example.jabber.org",
 			"password": "s0methingm4deup!",
-			"channels": [
+			"channel": [
 				"examplechannel"
 			]
 		}
